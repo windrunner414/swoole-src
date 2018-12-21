@@ -42,6 +42,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <endian.h>
 #ifdef __sun
 #include <strings.h>
 #endif
@@ -1155,11 +1156,9 @@ uint64_t swoole_hash_key(char *str, int str_len);
 uint32_t swoole_common_multiple(uint32_t u, uint32_t v);
 uint32_t swoole_common_divisor(uint32_t u, uint32_t v);
 
-// big endian return 0, little endian return 1
 static sw_inline int8_t swoole_get_host_endian()
 {
-    int i = 0;
-    return (*(char *)&i);
+    return (BYTE_ORDER == BIG_ENDIAN) ? SW_BIG_ENDIAN : SW_LITTLE_ENDIAN;
 }
 
 static sw_inline uint16_t swoole_swap_endian16(uint16_t x)

@@ -181,7 +181,7 @@ static char *swoole_buffer_read(swString *buffer, size_t offset, size_t length)
     return (buffer->str + offset);
 }
 
-static void swoole_buffer_to_endian(void *i, uint8_t size, uint8_t endian)
+static void swoole_buffer_endian_to_host(void *i, uint8_t size, uint8_t endian)
 {
     if (endian == SW_HOST_ENDIAN || endian == swoole_get_host_endian())
     {
