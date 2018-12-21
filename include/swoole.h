@@ -366,6 +366,13 @@ enum swWorker_status
     SW_WORKER_IDLE = 2,
     SW_WORKER_DEL  = 3,
 };
+
+enum swEndian_type
+{
+    SW_BIG_ENDIAN = 0,
+    SW_LITTLE_ENDIAN,
+    SW_HOST_ENDIAN,
+};
 //-------------------------------------------------------------------------------
 
 #define swWarn(str,...)          if (SW_LOG_WARNING >= SwooleG.log_level){\
@@ -1148,6 +1155,13 @@ uint64_t swoole_hash_key(char *str, int str_len);
 uint32_t swoole_common_multiple(uint32_t u, uint32_t v);
 uint32_t swoole_common_divisor(uint32_t u, uint32_t v);
 
+// big endian return 0, little endian return 1
+static sw_inline int8_t swoole_get_host_endian()
+{
+    int i = 0;
+    return (*(char *)&i);
+}
+
 static sw_inline uint16_t swoole_swap_endian16(uint16_t x)
 {
     return (((x & 0xff) << 8) | ((x & 0xff00) >> 8));
@@ -1156,6 +1170,13 @@ static sw_inline uint16_t swoole_swap_endian16(uint16_t x)
 static sw_inline uint32_t swoole_swap_endian32(uint32_t x)
 {
     return (((x & 0xff) << 24) | ((x & 0xff00) << 8) | ((x & 0xff0000) >> 8) | ((x & 0xff000000) >> 24));
+}
+
+static sw_inline uint64_t swoole_swap_endian64(uint64_t x)
+{
+    return (((x & 0xffU) << 56) | ((x & 0xff00U) << 40) | ((x & 0xff0000U) << 24)
+        | ((x & 0xff000000U) << 8) | ((x & 0xff00000000U) >> 8) | ((x & 0xff0000000000U) >> 24)
+        | ((x & 0xff000000000000U) >> 40) | ((x & 0xff00000000000000U) >> 56));
 }
 
 static sw_inline int32_t swoole_unpack(char type, void *data)

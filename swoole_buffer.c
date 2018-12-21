@@ -19,10 +19,13 @@
 static PHP_METHOD(swoole_buffer, __construct);
 static PHP_METHOD(swoole_buffer, __destruct);
 static PHP_METHOD(swoole_buffer, __toString);
+static PHP_METHOD(swoole_buffer, setEndian);
 static PHP_METHOD(swoole_buffer, append);
 static PHP_METHOD(swoole_buffer, substr);
 static PHP_METHOD(swoole_buffer, read);
+static PHP_METHOD(swoole_buffer, readInt8);
 static PHP_METHOD(swoole_buffer, write);
+static PHP_METHOD(swoole_buffer, writeInt8);
 static PHP_METHOD(swoole_buffer, expand);
 static PHP_METHOD(swoole_buffer, recycle);
 static PHP_METHOD(swoole_buffer, clear);
@@ -32,6 +35,10 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_construct, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_void, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_setEndian, 0, 0, 0)
+    ZEND_ARG_INFO(0, endian)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_expand, 0, 0, 1)
@@ -49,9 +56,18 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_write, 0, 0, 2)
     ZEND_ARG_INFO(0, data)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_writeInt8, 0, 0, 2)
+    ZEND_ARG_INFO(0, offset)
+    ZEND_ARG_INFO(0, data)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_read, 0, 0, 2)
     ZEND_ARG_INFO(0, offset)
     ZEND_ARG_INFO(0, length)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_readInt8, 0, 0, 1)
+    ZEND_ARG_INFO(0, offset)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_buffer_append, 0, 0, 1)
@@ -63,9 +79,12 @@ static const zend_function_entry swoole_buffer_methods[] =
     PHP_ME(swoole_buffer, __construct, arginfo_swoole_buffer_construct, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, __destruct, arginfo_swoole_buffer_void, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, __toString, arginfo_swoole_buffer_void, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_buffer, setEndian, arginfo_swoole_buffer_setEndian, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, substr, arginfo_swoole_buffer_substr, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, write, arginfo_swoole_buffer_write, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_buffer, writeInt8, arginfo_swoole_buffer_writeInt8, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, read, arginfo_swoole_buffer_read, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_buffer, readInt8, arginfo_swoole_buffer_readInt8, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, append, arginfo_swoole_buffer_append, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, expand, arginfo_swoole_buffer_expand, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_buffer, recycle, arginfo_swoole_buffer_void, ZEND_ACC_PUBLIC)
@@ -103,6 +122,88 @@ static void swoole_buffer_recycle(swString *buffer)
     buffer->length = length;
 }
 
+static size_t swoole_buffer_write(swString *buffer, swString *str, size_t offset)
+{
+    if (str->length < 1)
+    {
+        php_error_docref(NULL, E_WARNING, "string to write is empty.");
+        return -1;
+    }
+
+    if (offset < 0)
+    {
+        offset = buffer->length - buffer->offset + offset;
+    }
+    if (offset < 0)
+    {
+        php_error_docref(NULL, E_WARNING, "offset(%ld) is out of bounds.", offset);
+        return -1;
+    }
+
+    offset += buffer->offset;
+
+    if ((str->length + offset) > buffer->size && (str->length + offset) > SW_STRING_BUFFER_MAXLEN)
+    {
+        php_error_docref(NULL, E_WARNING, "buffer size can't exceed %d", SW_STRING_BUFFER_MAXLEN);
+        return -1;
+    }
+
+    if (swString_write(buffer, offset, str) == SW_OK)
+    {
+        return (buffer->length - buffer->offset);
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+static char *swoole_buffer_read(swString *buffer, size_t offset, size_t length)
+{
+    if (offset < 0)
+    {
+        offset = buffer->length - buffer->offset + offset;
+    }
+
+    if (offset < 0)
+    {
+        php_error_docref(NULL, E_WARNING, "offset(%ld) is out of bounds.", offset);
+        return NULL;
+    }
+
+    offset += buffer->offset;
+
+    if (length > buffer->length - offset)
+    {
+        return NULL;
+    }
+
+    return (buffer->str + offset);
+}
+
+static void swoole_buffer_to_endian(void *i, uint8_t size, uint8_t endian)
+{
+    if (endian == SW_HOST_ENDIAN || endian == swoole_get_host_endian())
+    {
+        return;
+    }
+
+    switch (size)
+    {
+    case 16:
+        *(uint16_t *)i = swoole_swap_endian16(*(uint16_t *)i);
+        break;
+    case 32:
+        *(uint32_t *)i = swoole_swap_endian32(*(uint32_t *)i);
+        break;
+    case 64:
+        *(uint64_t *)i = swoole_swap_endian64(*(uint64_t *)i);
+        break;
+    default:
+        break;
+    }
+}
+
 static PHP_METHOD(swoole_buffer, __construct)
 {
     long size = SW_STRING_BUFFER_DEFAULT;
@@ -133,6 +234,7 @@ static PHP_METHOD(swoole_buffer, __construct)
     swoole_set_object(getThis(), buffer);
     zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("capacity"), size);
     zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("length"), 0);
+    zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("endian"), SW_HOST_ENDIAN);
 }
 
 static PHP_METHOD(swoole_buffer, __destruct)
@@ -145,6 +247,23 @@ static PHP_METHOD(swoole_buffer, __destruct)
         swString_free(buffer);
     }
     swoole_set_object(getThis(), NULL);
+}
+
+static PHP_METHOD(swoole_buffer, setEndian)
+{
+    long endian = SW_HOST_ENDIAN;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &endian) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    if (endian < SW_HOST_ENDIAN || endian > SW_LITTLE_ENDIAN)
+    {
+        endian = SW_HOST_ENDIAN;
+    }
+
+    zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("endian"), endian);
 }
 
 static PHP_METHOD(swoole_buffer, append)
@@ -239,6 +358,7 @@ static PHP_METHOD(swoole_buffer, write)
 {
     long offset;
     swString str;
+    swString *buffer = swoole_get_object(getThis());
 
     bzero(&str, sizeof(str));
 
@@ -247,46 +367,61 @@ static PHP_METHOD(swoole_buffer, write)
         RETURN_FALSE;
     }
 
-    if (str.length < 1)
-    {
-        php_error_docref(NULL, E_WARNING, "string to write is empty.");
-        RETURN_FALSE;
-    }
-
-    swString *buffer = swoole_get_object(getThis());
-
-    if (offset < 0)
-    {
-        offset = buffer->length - buffer->offset + offset;
-    }
-    if (offset < 0)
-    {
-        php_error_docref(NULL, E_WARNING, "offset(%ld) is out of bounds.", offset);
-        RETURN_FALSE;
-    }
-
-    offset += buffer->offset;
-
-    if ((str.length + offset) > buffer->size && (str.length + offset) > SW_STRING_BUFFER_MAXLEN)
-    {
-        php_error_docref(NULL, E_WARNING, "buffer size can't exceed %d", SW_STRING_BUFFER_MAXLEN);
-        RETURN_FALSE;
-    }
-
     size_t size_old = buffer->size;
-    if (swString_write(buffer, offset, &str) == SW_OK)
+    size_t retval = swoole_buffer_write(swoole_get_object(getThis()), &str, offset);
+    if (retval < 0)
+    {
+        RETURN_FALSE;
+    }
+    else
     {
         if (buffer->size > size_old)
         {
             zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("capacity"), buffer->size);
         }
         zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("length"),
-                buffer->length - buffer->offset);
-        RETURN_LONG(buffer->length - buffer->offset);
+        buffer->length - buffer->offset);
+
+        RETURN_LONG(retval);
+    }
+}
+
+static PHP_METHOD(swoole_buffer, writeInt8)
+{
+    long offset;
+    long i;
+    int8_t data;
+    swString str;
+    swString *buffer = swoole_get_object(getThis());
+
+    bzero(&str, sizeof(str));
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "ll", &offset, &i) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    data = (int8_t)i;
+
+    str.str = (char *)&data;
+    str.length = sizeof(data);
+
+    size_t size_old = buffer->size;
+    size_t retval = swoole_buffer_write(buffer, &str, offset);
+    if (retval < 0)
+    {
+        RETURN_FALSE;
     }
     else
     {
-        RETURN_FALSE;
+        if (buffer->size > size_old)
+        {
+            zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("capacity"), buffer->size);
+        }
+        zend_update_property_long(swoole_buffer_ce_ptr, getThis(), ZEND_STRL("length"),
+        buffer->length - buffer->offset);
+
+        RETURN_LONG(retval);
     }
 }
 
@@ -302,24 +437,37 @@ static PHP_METHOD(swoole_buffer, read)
 
     swString *buffer = swoole_get_object(getThis());
 
-    if (offset < 0)
-    {
-        offset = buffer->length - buffer->offset + offset;
-    }
-    if (offset < 0)
-    {
-        php_error_docref(NULL, E_WARNING, "offset(%ld) is out of bounds.", offset);
-        RETURN_FALSE;
-    }
-
-    offset += buffer->offset;
-
-    if (length > buffer->length - offset)
+    char *retval = swoole_buffer_read(buffer, offset, length);
+    if (retval == NULL)
     {
         RETURN_FALSE;
     }
+    else
+    {
+        RETURN_STRINGL(retval, length);
+    }
+}
 
-    RETURN_STRINGL(buffer->str + offset, length);
+static PHP_METHOD(swoole_buffer, readInt8)
+{
+    long offset;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &offset) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    swString *buffer = swoole_get_object(getThis());
+
+    int8_t *retval = (int8_t *)swoole_buffer_read(buffer, offset, sizeof(int8_t));
+    if (retval == NULL)
+    {
+        RETURN_FALSE;
+    }
+    else
+    {
+        RETURN_LONG(*retval);
+    }
 }
 
 static PHP_METHOD(swoole_buffer, expand)
