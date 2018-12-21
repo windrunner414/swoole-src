@@ -181,29 +181,6 @@ static char *swoole_buffer_read(swString *buffer, size_t offset, size_t length)
     return (buffer->str + offset);
 }
 
-static void swoole_buffer_endian_to_host(void *i, uint8_t size, uint8_t endian)
-{
-    if (endian == SW_HOST_ENDIAN || endian == swoole_get_host_endian())
-    {
-        return;
-    }
-
-    switch (size)
-    {
-    case 16:
-        *(uint16_t *)i = swoole_swap_endian16(*(uint16_t *)i);
-        break;
-    case 32:
-        *(uint32_t *)i = swoole_swap_endian32(*(uint32_t *)i);
-        break;
-    case 64:
-        *(uint64_t *)i = swoole_swap_endian64(*(uint64_t *)i);
-        break;
-    default:
-        break;
-    }
-}
-
 static PHP_METHOD(swoole_buffer, __construct)
 {
     long size = SW_STRING_BUFFER_DEFAULT;

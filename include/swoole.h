@@ -1156,10 +1156,11 @@ uint64_t swoole_hash_key(char *str, int str_len);
 uint32_t swoole_common_multiple(uint32_t u, uint32_t v);
 uint32_t swoole_common_divisor(uint32_t u, uint32_t v);
 
-static sw_inline int8_t swoole_get_host_endian()
-{
-    return (BYTE_ORDER == BIG_ENDIAN) ? SW_BIG_ENDIAN : SW_LITTLE_ENDIAN;
-}
+#if BYTE_ORDER == BIG_ENDIAN
+#define SW_BYTE_ORDER SW_BIG_ENDIAN
+#else
+#define SW_BYTE_ORDER SW_LITTLE_ENDIAN
+#endif
 
 static sw_inline uint16_t swoole_swap_endian16(uint16_t x)
 {
@@ -1176,6 +1177,29 @@ static sw_inline uint64_t swoole_swap_endian64(uint64_t x)
     return (((x & 0xffU) << 56) | ((x & 0xff00U) << 40) | ((x & 0xff0000U) << 24)
         | ((x & 0xff000000U) << 8) | ((x & 0xff00000000U) >> 8) | ((x & 0xff0000000000U) >> 24)
         | ((x & 0xff000000000000U) >> 40) | ((x & 0xff00000000000000U) >> 56));
+}
+
+static sw_inline void swoole_endian_to_host(void *i, uint8_t size, uint8_t endian)
+{
+    if (endian == SW_HOST_ENDIAN || endian == SW_BYTE_ORDER)
+    {
+        return;
+    }
+
+    switch (size)
+    {
+        case 16:
+            *(uint16_t *)i = swoole_swap_endian16(*(uint16_t *)i);
+            break;
+        case 32:
+            *(uint32_t *)i = swoole_swap_endian32(*(uint32_t *)i);
+            break;
+        case 64:
+            *(uint64_t *)i = swoole_swap_endian64(*(uint64_t *)i);
+            break;
+        default:
+            break;
+    }
 }
 
 static sw_inline int32_t swoole_unpack(char type, void *data)
