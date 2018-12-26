@@ -2,6 +2,7 @@
 #include "coroutine.h"
 #include "async.h"
 #include "buffer.h"
+#include "ares.h"
 
 #include <string>
 #include <iostream>
@@ -13,6 +14,9 @@ using namespace std;
 static int socket_event_callback(swReactor *reactor, swEvent *event);
 static void socket_timer_callback(swTimer *timer, swTimer_node *tnode);
 static void socket_dns_callback(swAio_event *event);
+
+unordered_map<ares_socket_t, Coroutine*> dns_resolve_fd_map;
+unordered_map<long, string> dns_resolve_result;
 
 bool Socket::socks5_handshake()
 {
@@ -952,6 +956,37 @@ Socket* Socket::accept()
     return client_sock;
 }
 
+static void dns_callback(void* arg, int status, int timeouts, struct hostent* hptr)
+{
+    if (status == ARES_SUCCESS)
+    {
+        char *pptr = *hptr->h_addr_list;
+        if (pptr)
+        {
+            char addr[INET6_ADDRSTRLEN];
+            inet_ntop(hptr->h_addrtype, pptr, addr, INET6_ADDRSTRLEN);
+            dns_resolve_result[coroutine_get_current_cid()] = string(addr);
+        }
+        else
+        {
+            dns_resolve_result[coroutine_get_current_cid()] = "";
+        }
+    }
+    else
+    {
+        dns_resolve_result[coroutine_get_current_cid()] = "";
+    }
+}
+
+static int socket_dns_event_callback(swReactor *reactor, swEvent *event)
+{
+    reactor->del(reactor, event->fd);
+    Coroutine *co = dns_resolve_fd_map[event->fd];
+    dns_resolve_fd_map.erase(event->fd);
+    co->resume();
+    return SW_OK;
+}
+
 string Socket::resolve(string domain_name)
 {
     if (unlikely(!is_available()))
@@ -959,59 +994,94 @@ string Socket::resolve(string domain_name)
         return "";
     }
 
-    swAio_event ev;
-    bzero(&ev, sizeof(swAio_event));
-    if (domain_name.size() < SW_IP_MAX_LENGTH)
-    {
-        ev.nbytes = SW_IP_MAX_LENGTH + 1;
-    }
-    else
-    {
-        ev.nbytes = domain_name.size() + 1;
-    }
-    ev.buf = sw_malloc(ev.nbytes);
-    if (!ev.buf)
-    {
-        set_err(errno);
-        return "";
-    }
-
-    memcpy(ev.buf, domain_name.c_str(), domain_name.size());
-    ((char *) ev.buf)[domain_name.size()] = 0;
-    ev.flags = sock_domain;
-    ev.type = SW_AIO_GETHOSTBYNAME;
-    ev.object = this;
-    ev.handler = swAio_handler_gethostbyname;
-    ev.callback = socket_dns_callback;
-
-    if (SwooleAIO.init == 0)
-    {
-        swAio_init();
-    }
-
-    if (swAio_dispatch(&ev) < 0)
-    {
-        set_err(SwooleG.error);
-        sw_free(ev.buf);
-        return "";
-    }
-
-    /** cannot timeout */
-    double persistent_timeout = get_timeout();
-    set_timeout(-1);
-    yield();
-    set_timeout(persistent_timeout);
-
-    if (errCode == SW_ERROR_DNSLOOKUP_RESOLVE_FAILED)
+    ares_channel channel;
+    if (ares_init(&channel) != ARES_SUCCESS)
     {
         return "";
     }
-    else
+
+    ares_gethostbyname(channel, domain_name.c_str(), sock_domain, dns_callback, (void *) coroutine_get_current());
+    string addr;
+    int bitmap;
+    ares_socket_t sock[ARES_GETSOCK_MAXNUM];
+
+    if (!swReactor_handle_isset(reactor, SW_FD_CORO_DNS))
     {
-        string addr((char *) ev.buf);
-        sw_free(ev.buf);
-        return addr;
+        reactor->setHandle(reactor, SW_FD_CORO_DNS | SW_EVENT_READ, socket_dns_event_callback);
+        reactor->setHandle(reactor, SW_FD_CORO_DNS | SW_EVENT_WRITE, socket_dns_event_callback);
+        reactor->setHandle(reactor, SW_FD_CORO_DNS | SW_EVENT_ERROR, socket_dns_event_callback);
     }
+
+    while (true)
+    {
+        bitmap = ares_getsock(channel, sock, ARES_GETSOCK_MAXNUM);
+        if (bitmap == 0) break;
+
+        for (int i = 0; i < ARES_GETSOCK_MAXNUM; ++i)
+        {
+            int n = 0;
+
+            if (ARES_GETSOCK_READABLE(bitmap, i))
+            {
+                if (reactor->add(reactor, sock[i], SW_FD_CORO_DNS | SW_EVENT_READ) < 0)
+                {
+                    set_err(errno);
+                    goto resolve_fail;
+                }
+            }
+            else
+            {
+                n = 1;
+            }
+
+            if (ARES_GETSOCK_WRITABLE(bitmap, i))
+            {
+                if (reactor->add(reactor, sock[i], SW_FD_CORO_DNS | SW_EVENT_WRITE) < 0)
+                {
+                    set_err(errno);
+                    goto resolve_fail;
+                }
+
+                dns_resolve_fd_map[sock[i]] = coroutine_get_current();
+            }
+            else
+            {
+                if (n)
+                {
+                    break;
+                }
+                else
+                {
+                    dns_resolve_fd_map[sock[i]] = coroutine_get_current();
+                }
+            }
+        }
+
+        yield();
+
+        for (int i = 0; i < ARES_GETSOCK_MAXNUM; ++i)
+        {
+            if (ARES_GETSOCK_READABLE(bitmap, i) && ARES_GETSOCK_WRITABLE(bitmap, i))
+            {
+                ares_process_fd(channel, sock[i], sock[i]);
+            }
+            else
+            {
+                ares_process_fd(channel, sock[i], ARES_SOCKET_BAD);
+            }
+        }
+    }
+
+    ares_destroy(channel);
+
+    addr = dns_resolve_result[coroutine_get_current_cid()];
+    dns_resolve_result.erase(coroutine_get_current_cid());
+    printf("resolve addr: %s\n", addr.c_str());
+    return addr;
+
+    resolve_fail:
+    ares_destroy(channel);
+    return "";
 }
 
 bool Socket::shutdown(int __how)

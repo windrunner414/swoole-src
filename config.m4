@@ -522,8 +522,6 @@ if test "$PHP_SWOOLE" != "no"; then
         AC_DEFINE(SW_USE_PICOHTTPPARSER, 1, [enable picohttpparser support])
         swoole_source_file="$swoole_source_file thirdparty/picohttpparser/picohttpparser.c"
     fi
-
-    PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/hiredis])
     
     swoole_source_file="$swoole_source_file \
         thirdparty/hiredis/async.c \
@@ -531,6 +529,58 @@ if test "$PHP_SWOOLE" != "no"; then
         thirdparty/hiredis/net.c \
         thirdparty/hiredis/read.c \
         thirdparty/hiredis/sds.c"
+
+    swoole_source_file="$swoole_source_file \
+      thirdparty/cares/src/ares__close_sockets.c	\
+      thirdparty/cares/src/ares__get_hostent.c			\
+      thirdparty/cares/src/ares__read_line.c			\
+      thirdparty/cares/src/ares__timeval.c			\
+      thirdparty/cares/src/ares_android.c			\
+      thirdparty/cares/src/ares_cancel.c				\
+      thirdparty/cares/src/ares_data.c				\
+      thirdparty/cares/src/ares_destroy.c			\
+      thirdparty/cares/src/ares_expand_name.c			\
+      thirdparty/cares/src/ares_expand_string.c			\
+      thirdparty/cares/src/ares_fds.c				\
+      thirdparty/cares/src/ares_free_hostent.c			\
+      thirdparty/cares/src/ares_free_string.c			\
+      thirdparty/cares/src/ares_getenv.c				\
+      thirdparty/cares/src/ares_gethostbyaddr.c			\
+      thirdparty/cares/src/ares_gethostbyname.c			\
+      thirdparty/cares/src/ares_getnameinfo.c			\
+      thirdparty/cares/src/ares_getsock.c			\
+      thirdparty/cares/src/ares_init.c				\
+      thirdparty/cares/src/ares_library_init.c			\
+      thirdparty/cares/src/ares_llist.c				\
+      thirdparty/cares/src/ares_mkquery.c			\
+      thirdparty/cares/src/ares_create_query.c			\
+      thirdparty/cares/src/ares_nowarn.c				\
+      thirdparty/cares/src/ares_options.c			\
+      thirdparty/cares/src/ares_parse_a_reply.c			\
+      thirdparty/cares/src/ares_parse_aaaa_reply.c		\
+      thirdparty/cares/src/ares_parse_mx_reply.c			\
+      thirdparty/cares/src/ares_parse_naptr_reply.c		\
+      thirdparty/cares/src/ares_parse_ns_reply.c			\
+      thirdparty/cares/src/ares_parse_ptr_reply.c		\
+      thirdparty/cares/src/ares_parse_soa_reply.c		\
+      thirdparty/cares/src/ares_parse_srv_reply.c		\
+      thirdparty/cares/src/ares_parse_txt_reply.c		\
+      thirdparty/cares/src/ares_platform.c			\
+      thirdparty/cares/src/ares_process.c			\
+      thirdparty/cares/src/ares_query.c				\
+      thirdparty/cares/src/ares_search.c				\
+      thirdparty/cares/src/ares_send.c				\
+      thirdparty/cares/src/ares_strcasecmp.c			\
+      thirdparty/cares/src/ares_strdup.c				\
+      thirdparty/cares/src/ares_strerror.c			\
+      thirdparty/cares/src/ares_strsplit.c			\
+      thirdparty/cares/src/ares_timeout.c			\
+      thirdparty/cares/src/ares_version.c			\
+      thirdparty/cares/src/ares_writev.c				\
+      thirdparty/cares/src/bitncmp.c				\
+      thirdparty/cares/src/inet_net_pton.c			\
+      thirdparty/cares/src/inet_ntop.c				\
+      thirdparty/cares/src/windows_port.c"
 
     SW_NO_USE_ASM_CONTEXT="no"
     SW_ASM_DIR="thirdparty/boost/asm/"
@@ -603,6 +653,10 @@ if test "$PHP_SWOOLE" != "no"; then
 
     PHP_ADD_INCLUDE([$ext_srcdir])
     PHP_ADD_INCLUDE([$ext_srcdir/include])
+
+    PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/hiredis])
+    PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/cares/include])
+    PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/cares/config/linux])
 
     PHP_INSTALL_HEADERS([ext/swoole], [*.h config.h include/*.h])
 
