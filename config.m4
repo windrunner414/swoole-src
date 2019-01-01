@@ -512,6 +512,7 @@ if test "$PHP_SWOOLE" != "no"; then
         swoole_server_port.cc \
         swoole_socket_coro.cc \
         swoole_table.c \
+        swoole_map.cc \
         swoole_timer.cc \
         swoole_trace.c \
         swoole_websocket_server.cc"
@@ -531,6 +532,11 @@ if test "$PHP_SWOOLE" != "no"; then
         thirdparty/hiredis/net.c \
         thirdparty/hiredis/read.c \
         thirdparty/hiredis/sds.c"
+
+    swoole_source_file="$swoole_source_file \
+        thirdparty/sharedhashfile/SharedHashFile.cpp \
+        thirdparty/sharedhashfile/murmurhash3.c \
+        thirdparty/sharedhashfile/shf.c"
 
     SW_NO_USE_ASM_CONTEXT="no"
     SW_ASM_DIR="thirdparty/boost/asm/"
@@ -605,6 +611,7 @@ if test "$PHP_SWOOLE" != "no"; then
     PHP_ADD_INCLUDE([$ext_srcdir/include])
 
     PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/hiredis])
+    PHP_ADD_INCLUDE([$ext_srcdir/thirdparty/sharedhashfile])
 
     PHP_INSTALL_HEADERS([ext/swoole], [*.h config.h include/*.h])
 

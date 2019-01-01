@@ -346,6 +346,7 @@ void swoole_server_init(int module_number);
 void swoole_server_port_init(int module_number);
 void swoole_async_init(int module_number);
 void swoole_table_init(int module_number);
+void swoole_map_init(int module_number);
 void swoole_runtime_init(int module_number);
 void swoole_lock_init(int module_number);
 void swoole_atomic_init(int module_number);
